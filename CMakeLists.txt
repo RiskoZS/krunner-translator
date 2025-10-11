@@ -6,24 +6,26 @@ set(KF6_MIN_VERSION 6.0.0)
 find_package(ECM ${KF6_MIN_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${ECM_KDE_MODULE_DIR} ${CMAKE_MODULE_PATH})
 
-find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Quick Gui Widgets Network)
 find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Runner I18n CoreAddons Config ConfigWidgets KCMUtils)
 
 include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
+# include(ECMQmlModule)
 
 set(krunner_translator_SRCS
     src/translator.cpp
-    src/provider/baidu.cpp
-    src/provider/youdao.cpp
-    src/provider/GoogleTranslate.cpp src/provider/GoogleTranslate.h src/translateShellProcess.cpp src/translateShellProcess.h src/provider/Bing.cpp src/provider/Bing.h
-    src/LanguageRepository.cpp src/LanguageRepository.h
-    src/languages.cpp src/languages.h src/SupportedLanguages.h
+    src/TranslationResult.cpp
+    src/TranslationProvider.cpp
+    src/TranslateShellTranslationProvider.cpp
+    src/config_constants.h
+    src/languages.h
 )
 set(kcm_krunner_translator_SRCS
     src/config/translator_config.cpp
-    src/api/CommandLineEngine.h src/languages.cpp src/languages.h src/LanguageRepository.cpp src/LanguageRepository.h
+    src/config_constants.h
+    src/languages.h
 )
 
 ki18n_wrap_ui(kcm_krunner_translator_SRCS src/config/translator_config.ui)

@@ -17,119 +17,159 @@
  *****************************************************************************/
 
 #include "translator.h"
-#include "translateShellProcess.h"
-#include "config/translator_config.h"
-#include "provider/GoogleTranslate.h"
-#include "provider/baidu.h"
-#include "provider/youdao.h"
-#include "provider/Bing.h"
+
+#include "TranslationResult.h"
+#include "languages.h"
+#include "config_constants.h"
 
 #include <KConfigGroup>
 #include <klocalizedstring.h>
 
+#include <QVariant>
 #include <QClipboard>
+#include <QApplication>
+
 
 Translator::Translator(QObject *parent, const KPluginMetaData &pluginMetaData)
         : KRunner::AbstractRunner(parent, pluginMetaData) {
-    actions.append(KRunner::Action(QStringLiteral("copy"), QStringLiteral("edit-copy-symbolic"), i18n("Copy to Clipboard")));
-    actions.append(KRunner::Action(QStringLiteral("play"), QStringLiteral("audio-symbolic"), i18n("Play audio")));
+
+    m_googleProvider = new TranslateShellTranslationProvider(QStringLiteral("Google"), QStringLiteral("google"), true);
+    m_bingProvider = new TranslateShellTranslationProvider(QStringLiteral("Bing"), QStringLiteral("bing"), false);
+
+    m_providers.append(m_googleProvider);
+    m_providers.append(m_bingProvider);
 
     addSyntax(i18n("<language code> :q:"), i18n("Translates the word(s) :q: into target language"));
     addSyntax(i18n("<source language>-<target language> :q:"),
               i18n("Translates the word(s) :q: from the source into target language"));
-    languages.initialize();
+
+    setMatchRegex(QRegularExpression(QStringLiteral("^(\\w{2,3})(?:\\-(\\w{2,3}))?\\s+?(.+)$")));
 }
 
-bool Translator::parseTerm(const QString &term, QString &text, QPair<QString, QString> &language) {
-    const int index = term.indexOf(QStringLiteral(" "));
-    if (index == -1) return false;
-    text = term.mid(index + 1);
-    const QString languageTerm = term.left(index);
-
-    if (languageTerm.contains(QStringLiteral("-"))) {
-        int languageIndex = languageTerm.indexOf(QStringLiteral("-"));
-        language.first = languageTerm.left(languageIndex);
-        language.second = languageTerm.mid(languageIndex + 1);
-        if(languages.containsAbbreviation(language.first) && languages.containsAbbreviation(language.second) ) {
-            return true;
-        } else {
-            return false;
-        }
-    } else {
-        if (m_primary == languageTerm) {
-            language.first = m_secondary;
-        } else {
-            language.first = m_primary;
-        }
-        language.second = languageTerm;
-    }
-    return true;
+void Translator::init() {
+    reloadConfiguration();
 }
 
 void Translator::match(KRunner::RunnerContext &context) {
-    const QString term = context.query();
-    QString text;
-    QPair<QString, QString> language;
-
-    if (!parseTerm(term, text, language)) return;
-    if (!context.isValid()) return;
-
-    if (m_baiduEnable) {
-        QEventLoop baiduLoop;
-        Baidu baidu(this, context, text, language, m_baiduAPPID, m_baiduAPIKey);
-        connect(&baidu, &Baidu::finished, &baiduLoop, &QEventLoop::quit);
-        baiduLoop.exec();
+    // Parse the query
+    auto match = matchRegex().match(context.query());
+    if (!match.hasMatch()) {
+        return;
     }
-    if (m_youdaoEnable) {
-        QEventLoop youdaoLoop;
-        Youdao youdao(this, context, text, language, m_youdaoAPPID, m_youdaoAppSec);
-        connect(&youdao, &Youdao::finished, &youdaoLoop, &QEventLoop::quit);
-        youdaoLoop.exec();
+
+    QString first_lang = match.captured(1);
+    QString second_lang = match.captured(2);
+    QString text = match.captured(3);
+
+    // Determine languages
+    QString source_lang, target_lang;
+    if (!second_lang.isEmpty()) {
+        source_lang = match.captured(1);
+        target_lang = match.captured(2);
+    } else {
+        source_lang = (first_lang != m_primaryLanguage) ? m_primaryLanguage : m_secondaryLanguage;
+        target_lang = first_lang;
     }
-    for (auto engine : engines) {
-        auto match = engine->translate(text, language);
-        if (match.data().toString() == QStringLiteral("audio")) {
-            match.setActions(actions);
-        } else {
-            match.setActions({ actions.at(0) });
+
+    if (text.isEmpty()
+            || !Languages::hasCode(source_lang)
+            || !Languages::hasCode(target_lang)
+            || !context.isValid()) {
+        return;
+    }
+
+    // Query providers
+    QEventLoop loop;
+    int num_pending = 0;
+
+    for (auto provider : m_providers) {
+        if (!provider->enabled()) {
+            continue;
         }
-        context.addMatch(match);
+
+        TranslationResult *result = provider->translate(text, source_lang, target_lang);
+        if (result->complete()) {
+            addResult(context, result);
+            result->deleteLater(); // TODO: Probably just pass results by value
+            continue;
+        }
+
+        num_pending += 1;
+        connect(result, &TranslationResult::completed, this, [this, result, &context, &num_pending, &loop](){
+            addResult(context, result);
+            result->deleteLater();
+
+            num_pending -= 1;
+            if (num_pending <= 0 && loop.isRunning()) {
+                loop.quit();
+            }
+        });
     }
+
+    if (num_pending > 0) {
+        loop.exec(); // Yields until `loop.quit()` is called, effectively waiting for all the results to complete
+    }
+}
+
+void Translator::addResult(KRunner::RunnerContext &context, TranslationResult *result) {
+    if (!context.isValid()) {
+        return;
+    }
+
+    for (auto &translation : result->translations()) {
+        addTranslation(context, translation);
+    }
+}
+
+void Translator::addTranslation(KRunner::RunnerContext &context, TranslationResult::Translation &translation) {
+    if (!context.isValid()) {
+        return;
+    }
+
+    KRunner::QueryMatch match(this);
+    // match.setData(QVariant::fromValue<TranslationResult>(*result)); // TODO: Get this working. Actually, maybe make TranslationResult a subclass of QueryMatch?
+    match.setText(translation.translated());
+    match.setSubtext(translation.result()->provider()->name());
+    match.setRelevance(1);
+    match.setIconName(QStringLiteral("applications-education-language"));
+    if (!translation.audio().isNull()) {
+        match.addAction(KRunner::Action(
+            QStringLiteral("play"),
+            QStringLiteral("audio-symbolic"),
+            i18n("Play audio")
+        ));
+    }
+    match.addAction(KRunner::Action(
+        QStringLiteral("copy"),
+        QStringLiteral("edit-copy-symbolic"),
+        i18n("Copy to Clipboard")
+    ));
+    context.addMatch(match);
 }
 
 void Translator::run(const KRunner::RunnerContext &context, const KRunner::QueryMatch &match) {
     Q_UNUSED(context);
+
+    // TODO Actually handle playing audio
     QApplication::clipboard()->setText(match.text());
+
     KRunner::Action action = match.selectedAction();
-    if ((bool)action && action.id() == QStringLiteral("play")) {
-        TranslateShellProcess process;
-        process.play(match.text());
-    }
+    qWarning(action ? "run ran!" : "no action");
+
+    // if (action != nullptr && action.id() == QStringLiteral("play")) {
+    //     // TranslateShellProcess process;
+    //     // process.play(match.text());
+    // }
 }
 
 void Translator::reloadConfiguration() {
-    auto grp = config();
-    m_primary = grp.readEntry(CONFIG_PRIMARY, QStringLiteral("en"));
-    m_secondary = grp.readEntry(CONFIG_SECONDARY, QStringLiteral("es"));
-    m_baiduAPPID = grp.readEntry(CONFIG_BAIDU_APPID, QString());
-    m_baiduAPIKey = grp.readEntry(CONFIG_BAIDU_APIKEY, QString());
-    m_youdaoAPPID = grp.readEntry(CONFIG_YOUDAO_APPID, QString());
-    m_youdaoAppSec = grp.readEntry(CONFIG_YOUDAO_APPSEC, QString());
-    m_baiduEnable = grp.readEntry(CONFIG_BAIDU_ENABLE, false);
-    m_youdaoEnable = grp.readEntry(CONFIG_YOUDAO_ENABLE, false);
+    KConfigGroup group = config();
 
-    const bool googleEnable = grp.readEntry(CONFIG_GOOGLE_ENABLE, true);
-    const bool bingEnable = grp.readEntry(CONFIG_BING_ENABLE, false);
+    m_primaryLanguage = group.readEntry(Config::PrimaryLanguage::key, Config::PrimaryLanguage::def);
+    m_secondaryLanguage = group.readEntry(Config::SecondaryLanguage::key, Config::SecondaryLanguage::def);
 
-    engines.clear();
-    if (googleEnable) {
-        CommandLineEngine *googleTranslate = new GoogleTranslate(this);
-        engines.push_front(googleTranslate);
-    }
-    if (bingEnable) {
-        CommandLineEngine *bingTranslate = new Bing(this);
-        engines.push_front(bingTranslate);
-    }
+    m_googleProvider->setEnabled(group.readEntry(Config::GoogleEnabled::key, Config::GoogleEnabled::def));
+    m_bingProvider->setEnabled(group.readEntry(Config::BingEnabled::key, Config::BingEnabled::def));
 }
 
 K_PLUGIN_CLASS_WITH_JSON(Translator, "translator.json")

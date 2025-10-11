@@ -16,35 +16,173 @@
  *  If not, see <http://www.gnu.org/licenses/>.                               *
  *****************************************************************************/
 
-#ifndef RUNNERTRANSLATOR_LANGUAGES_H
-#define RUNNERTRANSLATOR_LANGUAGES_H
+#pragma once
 
+#include <klocalizedstring.h>
+#include <QMap>
 
-#include <QtCore/QString>
-#include <QtCore/QList>
-#include <QtCore/QVariant>
-#include "SupportedLanguages.h"
+// TODO: Implement the `auto` language code.
 
-class Language {
+/**
+ * The type for an understood language code.
+ */
+typedef QString LangCode;
 
-public:
-    Language() = default;
+/**
+ * Holds the list of understood language codes and the mapping between codes and
+ * proper names.
+ */
+namespace Languages {
+    namespace {
+        inline const QMap<LangCode, QString>& getMap() {
+            // C++11 guarantees static variables will be initialized only once, and
+            // this function should only be called after the runner has initialized,
+            // so the calls to `i18n` should be safe as well. Read-only accesses to
+            // the map are thread-safe as well, per Qt docs.
+            #define LANG(code, name) {QStringLiteral(code), i18n(name)}
+            static const QMap<LangCode, QString> map = {
+                LANG("af", "Afrikaans"),
+                LANG("sq", "Albanian"),
+                LANG("am", "Amharic"),
+                LANG("ar", "Arabic"),
+                LANG("hy", "Armenian"),
+                LANG("az", "Azerbaijan"),
+                LANG("eu", "Basque"),
+                LANG("be", "Belarusian"),
+                LANG("bn", "Bengali"),
+                LANG("bs", "Bosnian"),
+                LANG("bg", "Bulgarian"),
+                LANG("my", "Burmese"),
+                LANG("ca", "Catalan"),
+                LANG("ceb", "Cebuano"),
+                LANG("ny", "Chewa"),
+                LANG("zh", "Chinese"),
+                LANG("co", "Corsican"),
+                LANG("hr", "Croatian"),
+                LANG("cs", "Czech"),
+                LANG("da", "Danish"),
+                LANG("nl", "Dutch"),
+                LANG("en", "English"),
+                LANG("eo", "Esperanto"),
+                LANG("et", "Estonian"),
+                LANG("fil", "Filipino"),
+                LANG("fi", "Finish"),
+                LANG("fr", "French"),
+                LANG("gl", "Galician"),
+                LANG("ka", "Georgian"),
+                LANG("de", "German"),
+                LANG("el", "Greek"),
+                LANG("gu", "Gujarati"),
+                LANG("ht", "Haitian Creole"),
+                LANG("ha", "Hausa"),
+                LANG("haw", "Hawaiian"),
+                LANG("he", "Hebrew"),
+                LANG("hi", "Hindi"),
+                LANG("hmn", "Hmong"),
+                LANG("hu", "Hungarian"),
+                LANG("is", "Icelandic"),
+                LANG("ig", "Igbo"),
+                LANG("id", "Indonesian"),
+                LANG("ga", "Irish"),
+                LANG("it", "Italian"),
+                LANG("ja", "Japanese"),
+                LANG("jv", "Javanese"),
+                LANG("kn", "Kannada"),
+                LANG("kk", "Kazakh"),
+                LANG("km", "Khmer"),
+                LANG("rw", "Kinyarwanda"),
+                LANG("ko", "Korean"),
+                LANG("ku", "Kurdish"),
+                LANG("ky", "Kyrgyz"),
+                LANG("lo", "Lao"),
+                LANG("la", "Latin"),
+                LANG("lv", "Latvian"),
+                LANG("lt", "Lithuanian"),
+                LANG("lb", "Luxembourgish"),
+                LANG("mk", "Macedonian"),
+                LANG("mg", "Malagasy"),
+                LANG("ms", "Malay"),
+                LANG("ml", "Malayalam"),
+                LANG("mt", "Maltese"),
+                LANG("mi", "Māori"),
+                LANG("mr", "Marathi"),
+                LANG("mn", "Mongolian"),
+                LANG("ne", "Nepali"),
+                LANG("no", "Norwegian"),
+                LANG("or", "Odia"),
+                LANG("ps", "Pashto"),
+                LANG("fa", "Persian"),
+                LANG("pl", "Polish"),
+                LANG("pt", "Portuguese"),
+                LANG("pa", "Punjabi"),
+                LANG("ro", "Romanian"),
+                LANG("ru", "Russian"),
+                LANG("sm", "Samoan"),
+                LANG("gd", "Scots Gaelic"),
+                LANG("sr", "Serbian"),
+                LANG("sn", "Shona"),
+                LANG("sd", "Sindhi"),
+                LANG("si", "Sinhala"),
+                LANG("sk", "Slovak"),
+                LANG("sl", "Slovenian"),
+                LANG("so", "Somali"),
+                LANG("st", "Sotho"),
+                LANG("es", "Spanish"),
+                LANG("su", "Sundanese"),
+                LANG("sw", "Swahili"),
+                LANG("sv", "Swedish"),
+                LANG("tl", "Tagalog"),
+                LANG("tg", "Tajik"),
+                LANG("ta", "Tamil"),
+                LANG("tt", "Tatar"),
+                LANG("te", "Telugu"),
+                LANG("th", "Thai"),
+                LANG("tr", "Turkish"),
+                LANG("tk", "Turkmen"),
+                LANG("uk", "Ukrainian"),
+                LANG("ur", "Urdu"),
+                LANG("ug", "Uyghur"),
+                LANG("uz", "Uzbek"),
+                LANG("vi", "Vietnamese"),
+                LANG("cy", "Welsh"),
+                LANG("fy", "West Frisian"),
+                LANG("xh", "Xhosa"),
+                LANG("he", "Yiddish"),
+                LANG("yo", "Yoruba"),
+                LANG("zu", "Zulu"),
+            };
+            #undef LANG
 
-    ~Language() = default;
+            return map;
+        }
+    }
 
-    Language(SupportedLanguage language, QString name, QString abbreviation);
+    /**
+     * Returns whether the given string is a valid language code.
+     */
+    inline bool hasCode(QString code) {
+        return getMap().contains(code);
+    }
 
-    Language(Language const &language) = default;
+    /**
+     * Returns a list of all understood languages codes.
+     */
+    inline const QList<LangCode> getAllCodes() {
+        return getMap().keys();
+    }
 
-    QString getCombinedName();
+    /**
+     * Returns the proper language name for a given code.
+     */
+    inline QString nameFromCode(LangCode code) {
+        return getMap().value(code);
+    }
 
-    QString getAbbreviation();
-
-private:
-    QString name;
-    QString abbreviation;
-};
-
-Q_DECLARE_METATYPE(Language)
-
-#endif //RUNNERTRANSLATOR_LANGUAGES_H
+    /**
+     * Returns a formatted, localized string containing both the language name
+     * and the language code.
+     */
+    inline QString fullNameFromCode(LangCode code) {
+        return i18nc("<language name> (<language ISO code>)", "%1 (%2)", nameFromCode(code), code);
+    }
+}

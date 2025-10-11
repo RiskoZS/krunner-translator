@@ -19,8 +19,8 @@
 #ifndef TRANSLATOR_H
 #define TRANSLATOR_H
 
-#include "provider/GoogleTranslate.h"
-#include "LanguageRepository.h"
+#include "TranslateShellTranslationProvider.h"
+#include "TranslationProvider.h"
 
 #include <KRunner/AbstractRunner>
 #include <KRunner/Action>
@@ -35,19 +35,19 @@ public:
     void run(const KRunner::RunnerContext &, const KRunner::QueryMatch &) override;
     void reloadConfiguration() override;
 
+protected:
+    void init() override;
+
 private:
-    bool parseTerm(const QString &, QString &, QPair<QString, QString> &);
-    QList<KRunner::Action> actions;
-    QString m_primary;
-    QString m_secondary;
-    QString m_baiduAPPID;
-    QString m_baiduAPIKey;
-    QString m_youdaoAPPID;
-    QString m_youdaoAppSec;
-    bool m_baiduEnable;
-    bool m_youdaoEnable;
-    QList<CommandLineEngine *> engines;
-    LanguageRepository languages;
+    void addResult(KRunner::RunnerContext &context, TranslationResult *result);
+    void addTranslation(KRunner::RunnerContext &context, TranslationResult::Translation &translation);
+
+    QString m_primaryLanguage;
+    QString m_secondaryLanguage;
+
+    TranslateShellTranslationProvider *m_googleProvider;
+    TranslateShellTranslationProvider *m_bingProvider;
+    QList<TranslationProvider *> m_providers;
 };
 
 #endif

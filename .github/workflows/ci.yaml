@@ -1,0 +1,103 @@
+name: CI
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: ubuntu
+            image: ubuntu:24.10
+          - name: fedora
+            image: fedora:41
+      max-parallel: 1
+
+    name: "${{ matrix.os.name }}-build"
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.os.image }}
+
+    steps:
+      - name: Install rpm-build
+        if: matrix.os.name == 'fedora'
+        run: |
+          sudo dnf install -y rpm-build
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # We're automatically running as root and `sudo` doesn't exist on the Ubuntu image
+      - name: Remove sudo from scripts
+        run: |
+          sed -i 's/sudo //' install.sh uninstall.sh
+
+      - name: Run Installation Script
+        run: ./install.sh
+
+      - name: Test Uninstall
+        run: ./uninstall.sh
+
+  #     - name: Package
+  #       run: cpack --config build/CPackConfig.cmake
+
+  #     - name: Retrieve Variables
+  #       id: variables
+  #       run: |
+  #         . build/cmake-vars.sh
+  #         echo "pkg-file-name=$CPACK_PACKAGE_FILE_NAME" >> "$GITHUB_OUTPUT"
+
+  #     # Test installing packages
+  #     - name: Install Fedora Package
+  #       if: matrix.os.name == 'fedora'
+  #       run: sudo dnf install -y "./${{ steps.variables.outputs.pkg-file-name }}.rpm"
+
+  #     - name: Install Ubuntu Package
+  #       if: matrix.os.name == 'ubuntu'
+  #       run: apt install -y "./${{ steps.variables.outputs.pkg-file-name }}.deb"
+
+  #     # Create archive
+  #     - name: Create Archive
+  #       run: tar czf "${{ github.event.repository.name }}.tar.gz" ./README.md ./LICENSE build/bin/* --xform='s,build/bin/,,'
+
+  #     # Upload artifacts
+  #     - name: Upload Archive Artifact
+  #       if: matrix.os.name == 'fedora'  # This needs to run in only one job
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: Binary tarball
+  #         path: "*.tar.gz"
+
+  #     - name: Upload Fedora Artifact
+  #       if: matrix.os.name == 'fedora'
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: RPM
+  #         path: "*.rpm"
+
+  #     - name: Upload Ubuntu Artifact
+  #       if: matrix.os.name == 'ubuntu'
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: DEB
+  #         path: "*.deb"
+
+  # release:
+  #   name: Release
+  #   needs:
+  #     - build
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - name: Download Artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: artifacts
+
+  #     - name: Publish Release
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         draft: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  #         generate_release_notes: true
+  #         fail_on_unmatched_files: true
+  #         files: |
+  #           artifacts/*/*
